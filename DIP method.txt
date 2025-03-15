@@ -1,0 +1,196 @@
+
+
+##DIP method
+
+lfn=function(x,y)
+{
+  n=length(y)
+  m=length(x)
+  Fy=ecdf(y)
+  fx=Fy(x)
+  lx=c()
+  for(i in 1:m)
+  {
+    if(fx[i]==0)  #avoid infty problem
+    {
+      lx[i]=-2*log(n)
+    } 
+    else if(fx[i]==1)
+    {
+      lx[i]=2*log(n)
+    } 
+    else 
+    {
+      lx[i]=log(fx[i]/(1-fx[i]))
+    }
+  }
+  return(lx)
+}
+
+
+fun_newsubset=function(X,Y,n,p,n_subset,clean_setv)
+{
+  rob_sd=apply(X[clean_setv,],2,mad)
+  X=X-rep(1,n)%o%apply(X[clean_setv,],2,median);   
+  X=X%*%diag(1/rob_sd);
+  Y=(Y-median(Y[,clean_setv]))/mad(Y[,clean_setv])
+  
+  TT=rep(0,n_subset)
+  Tmax=rep(0,length(clean_setv))
+  Tmin=rep(0,length(clean_setv))
+  for (i in 1:length(clean_setv))
+  {
+    S_i=setdiff(clean_setv,clean_setv[i])     
+    for (m in 1: n_subset)
+    { 
+      I1=sample(S_i,size =floor(length(S_i)/2),replace=FALSE,prob=NULL) #sample
+   a=Rrss(Y[I1],m=floor(sqrt(length(I1))),r=floor(sqrt(length(I1))),type="l",sets=FALSE,alpha=0.1)
+
+ #     a=Rrss(as.vector(Y[I1]),m=floor(sqrt(length(I1)/2)),r=1,type="l",sets=FALSE,alpha=0.1)
+      S_i1=setdiff(S_i,I1)
+	  subset_vol=floor(length(S_i1)/2)
+      I2=sample(S_i1,size =subset_vol,replace=FALSE,prob=NULL)
+      s1=I2 #1:2n/(I,k), n-1 samples
+      s2=c(I2,i) #1:2n/I, n samples
+      X1=X[s1,]  
+      Y1=Y[s1] 
+      X2=X[s2,]  
+      Y2=Y[s2] 
+      LY1=lfn(Y1,a) #transform
+      LY2=lfn(Y2,a)
+      frhat1= LY1%*%X1/subset_vol
+      frhat2=LY2%*%X2/(subset_vol+1) 
+      TT[m]=((subset_vol+1)^2)*(sum((frhat1-frhat2)^2)/p) #compute dk
+    }
+    Tmax[i]=max(TT) 
+    Tmin[i]=min(TT)
+  }
+  list(Tmax=Tmax,Tmin=Tmin)
+}
+
+#max
+
+fun_max=function(X,Y,n,p,n_subset,clean_setv,alpha)
+{
+  
+  Tmax=(fun_newsubset(X,Y,n,p,n_subset,clean_setv))$Tmax
+  pv_max=2*exp(-sqrt(Tmax))/(1+exp(-sqrt(Tmax)))
+  Spv_max=sort.int(pv_max,index.return=TRUE)  # sorted p value
+  Si_max=Spv_max$ix
+  dp_max=Spv_max$x-alpha*c(1:length(clean_setv))/length(clean_setv)
+  
+  In_max=which(dp_max<=0)    # BH procedure to control the error rate 
+  if (length(In_max)==0)
+  {clean_set_max=clean_setv}
+  else
+  {
+    rin_max=max(In_max)  
+    inf_set_max=clean_setv[Si_max[1:rin_max]] 
+    clean_set_max=setdiff(clean_setv,inf_set_max)    
+  }
+  
+  list(clean_set_max=clean_set_max)
+}
+
+
+
+#min
+
+fun_min=function(X,Y,n,p,n_subset,clean_setv,ep=0.05,alpha)
+{  
+
+  Tmin=(fun_newsubset(X,Y,n,p,n_subset,clean_setv))$Tmin
+  pv_min=2*exp(-sqrt(Tmin))/(1+exp(-sqrt(Tmin)))
+  Spv_min=sort.int(pv_min,index.return=TRUE)  # sorted p value
+  Si_min=Spv_min$ix
+  dp_min=Spv_min$x-alpha*c(1:length(clean_setv))/length(clean_setv)
+  
+  In_min=which(dp_min<=0)    
+  if (length(In_min)==0)
+  {clean_set_min=clean_setv}
+  else
+  {
+    rin_min=max(In_min)  
+    inf_set_min=clean_setv[Si_min[1:min(floor(ep*n),rin_min)]]
+    clean_set_min=setdiff(clean_setv,inf_set_min)
+  }  
+  
+  list(clean_set_min=clean_set_min)
+}
+
+#check
+
+fun_newchecking=function(X,Y,n,p,inf_t,clean_t,alpha)   
+{    
+  rob_sd=apply(X[clean_t,],2,mad)
+  X=X-rep(1,n)%o%apply(X[clean_t,],2,median);   
+  X=X%*%diag(1/rob_sd);
+  Y=(Y-median(Y[,clean_t]))/mad(Y[,clean_t])
+  
+  T=rep(0,length(inf_t))
+  for (i in 1:length(inf_t))   
+  {       
+    n1=floor(length(clean_t)/2)
+    I1=sample(clean_t,size =n1,replace=FALSE,prob=NULL)
+    I2=setdiff(clean_t,I1)
+  a=Rrss(Y[I2],m=floor(sqrt(length(I2))),r=floor(sqrt(length(I2))),type="l",sets=FALSE,alpha=0.1)
+
+ #   a=Rrss(Y[I2],m=floor(sqrt(length(I2)/2)),r=1,type="l",sets=FALSE,alpha=0.1)
+    X1=X[c(inf_t[i],I1),]  
+    Y1=Y[,c(inf_t[i],I1)] 
+    X2=X[I1,]  
+    Y2=Y[,I1] 
+    LY1=lfn(Y1,a) #transform
+    LY2=lfn(Y2,a)
+    frhat1=LY1%*%X1/(length(I1)+1)
+    frhat2=LY2%*%X2/length(I1)
+    T[i]=((length(I1)+1)^2)*(sum((frhat1-frhat2)^2)/p)     
+  }
+  pv_inf=2*exp(-sqrt(T))/(1+exp(-sqrt(T)))
+  Spv_inf=sort.int(pv_inf,index.return=TRUE)  
+  Si=Spv_inf$ix
+  dp=Spv_inf$x-alpha*c(1:length(inf_t))/length(inf_t)
+  
+  In=which(dp<=0)   
+  if (length(In)==0)
+  {clean_setfinal=c(1:n)
+  inf_setfinal=setdiff(c(1:n),clean_setfinal)
+  }
+  
+  else{ 
+    rin=max(In)  
+    inf_setfinal=inf_t[Si[1:rin]] 
+    clean_setfinal=setdiff(c(1:n),inf_setfinal)
+  }
+  
+  list(inf_setfinal=inf_setfinal)   
+}
+
+newmethod=function(X,Y,n,p,n_subset,ep=0.05,alpha)
+{
+  clean_set=c(1:n) 
+  clean_set_min=fun_min(X,Y,n,p,n_subset,clean_set,ep,alpha)$clean_set_min
+  clean_set_max=fun_max(X,Y,n,p,n_subset,clean_set_min,alpha)$clean_set_max
+  flag=0
+  while (length(clean_set_max)<n/2)
+  {
+    clean_set_min=fun_min(X,Y,n,p,n_subset,clean_set_min,ep,alpha)$clean_set_min
+    clean_set_max=fun_max(X,Y,n,p,n_subset,clean_set_min,alpha)$clean_set_max
+  }
+  clean_t=clean_set_max  
+  inf_t=setdiff(c(1:n),clean_t)
+  if (length(inf_t)!=0){inf_setfinal=fun_newchecking(X,Y,n,p,inf_t,clean_t,alpha)$inf_setfinal} else{inf_setfinal=inf_t}
+  list(inf_setfinal=inf_setfinal)
+  
+}
+
+
+## DIP_ID=newmethod(X,Y,n,p,n_subset,ep=0.05,alpha)
+## input: X : predictor n*p 
+          Y : response 1*n
+		  n: number of observations
+		  p: dimension of predictors
+		  n_subset: number of RSSampling times
+		  ep: tuning parameter 
+		  alpha: FDR significance level
+## output: ID of influential points
